@@ -1,0 +1,93 @@
+---
+title: "Practical Machine Learning Course Project"
+---
+###1. Introduction
+This document represents the output of the peer assessment in the practical machine coursera course. 
+Because the goal of this work is to create a predictive model, this document is basically a report describing how this model is built, how it uses cross validation, what is the expected out of sample error, and why you some choices are made.
+
+###2. Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+###3. Synopsis
+Using data from accelerometers on the belt, forearm, arm, and dumbbell of 6 participants who were asked to perform barbell lifts correctly and incorrectly in 5 different ways, the goal of this project is to create a model that allow us to predict the manner in which they did the exercises.
+
+###4. Init Data
+```{r setoption, message=FALSE, warning=FALSE}
+library(knitr)
+library(caret)
+library(rattle)
+library(rpart)
+library(randomForest)
+
+opts_chunk$set(cache = TRUE)
+```
+
+```{r}
+trainingURL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testingURL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+download.file(trainingURL, "pml-training.csv", mode = 'wb', cacheOK = TRUE )
+download.file(testingURL, "pml-testing.csv", mode = 'wb', cacheOK = TRUE )
+
+training <- read.csv("pml-training.csv", header = TRUE, stringsAsFactors = FALSE, na.strings=c("NA","#DIV/0!","") )
+testing <- read.csv("pml-testing.csv", header = TRUE, stringsAsFactors = FALSE, na.strings=c("NA","#DIV/0!",""))
+```
+###5. Data Exploratory and Data Cleaning
+```{r}
+summary(training)
+```
+The following piece of code remove the near zero value covariats, columns filled with NAs and unneeded other columns
+```{r}
+nzv <- nearZeroVar(training)
+training <- training[,-nzv]
+testing <- testing[,-nzv]
+
+nav <- which(apply(training,2,function(x) {sum(is.na(x))}) == 0)
+training <- training[,nav]
+testing <- testing[,nav]
+training <- training[,-c(1:6)]
+
+training$classe <- as.factor(training$classe)
+```
+
+###6. Criation of Data Sets for Cross-Reference Validation Purposes
+```{r}
+set.seed(999)
+inTrain <- createDataPartition( y=training$class, p=3/4, list=FALSE)
+CRtraining <- training[inTrain,]
+CRtesting <- training[-inTrain,]
+```
+
+###7. Model Development and Validation
+####7.1 Predicting with Trees 
+```{r}
+modFitTrees <- train(classe ~ ., method="rpart", data=CRtraining)
+confusionMatrix(predict(modFitTrees, newdata = CRtesting), CRtesting$classe)
+```
+The Cross-Reference Validation allow us to conclude that there are a lot of false positives and false negatives. The 'accuracy' value using this model is so low. 
+Let's look some differences visually.
+```{r}
+m <- rbind(table(CRtesting$classe),  table(predict(modFitTrees, newdata = CRtesting)))
+barplot(m, beside = TRUE, main="Compare of 'classe' variable in Training Set versus Predition",
+        col=c("darkblue","red"), legend = c("Cross Reference Data", "Prediction of Cross Reference Data"))
+```
+
+####7.2 Predicting with Random Forest 
+```{r}
+##modFitRF <- train(classe ~ ., method="rf",data=CRtraining)
+modFitRF <- randomForest(classe ~ ., data=CRtraining)
+confusionMatrix(predict(modFitRF, newdata = CRtesting), CRtesting$classe)
+```
+The 'accuracy' value using this model is very good as expected. 
+Let's look the alignment of the predictions using the Cross-Reference Validation.
+```{r}
+m <- rbind(table(CRtesting$classe),  table(predict(modFitRF, newdata = CRtesting)))
+barplot(m, beside = TRUE, main="Compare of 'classe' variable in Training Set versus Predition",
+        col=c("darkblue","red"), legend = c("Cross Reference Data", "Prediction of Cross Reference Data"))
+```
+
+####8. Prediction of Test Data
+Based on the analysis of the two models is obviously that the Random Forest algorithm will be use to predict the values of the 20 lines of the testing data set. 
+```{r results='hide'}
+predict(modFitRF, newdata = testing)
+```
